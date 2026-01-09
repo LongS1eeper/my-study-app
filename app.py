@@ -5,21 +5,57 @@ import random
 import re
 
 # ==========================================
-# 1. 설정 및 데이터 로드
+# 1. 페이지 설정 및 스타일 (CSS)
 # ==========================================
 st.set_page_config(
     page_title="투자자산운용사 마스터",
-    page_icon="💼",
+    page_icon="🎓",
     layout="centered"
 )
 
-# 파일 경로
+# 커스텀 CSS (디자인 예쁘게 만들기)
+st.markdown("""
+    <style>
+    .question-box {
+        background-color: #f0f2f6;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #4CAF50;
+        margin-bottom: 20px;
+    }
+    .question-text {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+        line-height: 1.6;
+    }
+    .category-tag {
+        background-color: #e8eaf6;
+        color: #3f51b5;
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: bold;
+        display: inline-block;
+        margin-bottom: 10px;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        height: 50px;
+        font-weight: bold;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 2. 데이터 로드 및 저장 함수
+# ==========================================
 DB_FILE = "database.json"
 WRONG_NOTE_FILE = "wrong_notes.json"
 
 @st.cache_data
 def load_data():
-    """database.json 파일을 로드합니다."""
     if not os.path.exists(DB_FILE):
         return []
     with open(DB_FILE, "r", encoding="utf-8") as f:
@@ -29,7 +65,6 @@ def load_data():
             return []
 
 def load_wrong_notes():
-    """오답 노트를 로드합니다."""
     if os.path.exists(WRONG_NOTE_FILE):
         with open(WRONG_NOTE_FILE, "r", encoding="utf-8") as f:
             try:
@@ -39,7 +74,6 @@ def load_wrong_notes():
     return []
 
 def save_wrong_note(question_item):
-    """틀린 문제를 오답 노트 파일에 저장합니다."""
     current_notes = load_wrong_notes()
     if not any(q['id'] == question_item['id'] for q in current_notes):
         current_notes.append(question_item)
@@ -47,31 +81,27 @@ def save_wrong_note(question_item):
             json.dump(current_notes, f, ensure_ascii=False, indent=2)
 
 # ==========================================
-# 2. 세션 상태 초기화
+# 3. 세션 상태 관리
 # ==========================================
-if 'quiz_data' not in st.session_state:
-    st.session_state['quiz_data'] = []
-if 'current_idx' not in st.session_state:
-    st.session_state['current_idx'] = 0
-if 'score' not in st.session_state:
-    st.session_state['score'] = 0
-if 'quiz_started' not in st.session_state:
-    st.session_state['quiz_started'] = False
-if 'show_answer' not in st.session_state:
-    st.session_state['show_answer'] = False
-if 'user_result' not in st.session_state:
-    st.session_state['user_result'] = None
-if 'user_input' not in st.session_state:
-    st.session_state['user_input'] = None
+# 세션 변수 초기화 함수
+def init_session():
+    defaults = {
+        'quiz_data': [], 'current_idx': 0, 'score': 0, 
+        'quiz_started': False, 'show_answer': False, 
+        'user_result': None, 'user_input': None
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+init_session()
 
 # ==========================================
-# 3. 사이드바
+# 4. 사이드바 (메뉴)
 # ==========================================
-st.sidebar.title("MENU 💼")
-
-# [수정됨] 메뉴에 '랜덤 30문항 모의고사' 추가
+st.sidebar.header("📚 학습 메뉴")
 mode = st.sidebar.radio(
-    "학습 모드 선택", 
+    "모드 선택", 
     ["전체 문제 풀기", "주제별 풀기", "랜덤 30문항 모의고사", "오답 노트 복습"]
 )
 
@@ -82,49 +112,50 @@ selected_category = None
 if mode == "주제별 풀기":
     selected_category = st.sidebar.selectbox("주제 선택", categories)
 
-if st.sidebar.button("초기화 (처음부터 다시)"):
+if st.sidebar.button("🔄 처음으로 리셋", use_container_width=True):
     st.session_state['quiz_started'] = False
     st.rerun()
 
 # ==========================================
-# 4. 메인 로직
+# 5. 메인 화면 로직
 # ==========================================
-st.title("💰 투자자산운용사 핵심 퀴즈")
+st.title("💰 투자자산운용사 마스터")
 
+# --- [화면 1] 퀴즈 시작 전 ---
 if not st.session_state['quiz_started']:
-    st.info(f"데이터베이스에 총 {len(all_data)}개의 문제가 있습니다.")
-    
+    st.markdown("---")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.image("https://cdn-icons-png.flaticon.com/512/2921/2921222.png", width=100)
+    with col2:
+        st.subheader("준비 되셨나요?")
+        st.write(f"현재 데이터베이스에 **{len(all_data)}문제**가 있습니다.")
+        st.write("이동 중에도 틈틈이 공부해서 합격합시다!")
+
     final_questions = []
     
-    # 모드별 데이터 준비 로직
+    # 데이터 필터링
     if mode == "전체 문제 풀기":
         final_questions = all_data.copy()
-        
     elif mode == "주제별 풀기" and selected_category:
         final_questions = [q for q in all_data if q.get('category') == selected_category]
-        
-    # [추가된 로직] 랜덤 30문항 추출
     elif mode == "랜덤 30문항 모의고사":
         if len(all_data) > 30:
             final_questions = random.sample(all_data, 30)
         else:
-            final_questions = all_data.copy() # 30개보다 적으면 전부 다
-            
+            final_questions = all_data.copy()
     elif mode == "오답 노트 복습":
         final_questions = load_wrong_notes()
         if not final_questions:
-            st.warning("저장된 오답 노트가 없습니다.")
+            st.warning("📝 저장된 오답 노트가 없습니다.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
     
-    # 시작 버튼
     if final_questions:
-        # 문구 다르게 표시
-        btn_text = "모의고사 시작! (30문항) ⏱️" if mode == "랜덤 30문항 모의고사" else "학습 시작하기! 🚀"
-        
-        if st.button(btn_text):
-            # 랜덤 모드는 이미 섞여 있지만, 한번 더 섞어줌 (다른 모드들을 위해)
-            if mode != "랜덤 30문항 모의고사": 
+        btn_text = "🔥 모의고사 시작 (30문항)" if mode == "랜덤 30문항 모의고사" else "🚀 학습 시작하기"
+        if st.button(btn_text, type="primary", use_container_width=True):
+            if mode != "랜덤 30문항 모의고사":
                 random.shuffle(final_questions)
-            
             st.session_state['quiz_data'] = final_questions
             st.session_state['current_idx'] = 0
             st.session_state['score'] = 0
@@ -135,104 +166,111 @@ if not st.session_state['quiz_started']:
             st.rerun()
     else:
         if mode != "오답 노트 복습":
-            st.error("데이터를 불러오지 못했습니다.")
+            st.error("데이터 로드 실패.")
 
+# --- [화면 2] 퀴즈 진행 중 ---
 else:
     q_list = st.session_state['quiz_data']
     idx = st.session_state['current_idx']
     
-    progress = (idx / len(q_list))
+    # 상단 진행바
+    progress = (idx + 1) / len(q_list)
     st.progress(progress)
-    st.caption(f"진행률: {idx + 1} / {len(q_list)} (현재 점수: {st.session_state['score']}점)")
+    
+    # 점수판
+    c1, c2, c3 = st.columns(3)
+    c1.metric("현재 문제", f"{idx + 1} / {len(q_list)}")
+    c2.metric("맞은 개수", f"{st.session_state['score']} 개")
+    c3.metric("남은 문제", f"{len(q_list) - (idx + 1)} 개")
+
+    st.markdown("---")
 
     if idx < len(q_list):
         question = q_list[idx]
         
-        # --- 문제 표시 ---
-        with st.container():
-            category_text = question.get('category', '공통 주제')
-            st.caption(f"🏷️ 주제: **{category_text}**") 
-            
-            st.markdown(f"### Q{idx+1}. [{question.get('type', '일반')}]")
-            st.markdown(f"#### {question['question']}")
-            st.divider()
+        # ----------------------------------------
+        # 1. 문제 카드 표시 (디자인 개선)
+        # ----------------------------------------
+        category_text = question.get('category', '공통')
+        
+        st.markdown(f"""
+            <div class="question-box">
+                <div class="category-tag">Subject: {category_text}</div>
+                <div class="question-text">Q. {question['question']}</div>
+            </div>
+        """, unsafe_allow_html=True)
 
-        # --- 사용자 입력 및 정답 처리 ---
+        # ----------------------------------------
+        # 2. 사용자 입력 영역
+        # ----------------------------------------
         if not st.session_state['show_answer']:
+            st.markdown("##### 👇 정답을 선택하세요")
             
-            # 1. OX 문제
+            # [유형 A] OX 퀴즈
             if question.get('type') == 'OX':
-                st.markdown("##### 정답을 선택하세요.")
-                c1, c2 = st.columns(2)
-                if c1.button("⭕ O", use_container_width=True):
-                    st.session_state['user_input'] = "O"
-                    st.session_state['show_answer'] = True
-                    st.rerun()
-                if c2.button("❌ X", use_container_width=True):
-                    st.session_state['user_input'] = "X"
-                    st.session_state['show_answer'] = True
-                    st.rerun()
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("⭕ O (맞음)", use_container_width=True):
+                        st.session_state['user_input'] = "O"
+                        st.session_state['show_answer'] = True
+                        st.rerun()
+                with col2:
+                    if st.button("❌ X (틀림)", use_container_width=True):
+                        st.session_state['user_input'] = "X"
+                        st.session_state['show_answer'] = True
+                        st.rerun()
 
-            # 2. 빈칸 문제 (선택형 vs 일반형 자동 감지)
+            # [유형 B] 빈칸 채우기 (선택형 or 주관식)
             else:
+                # (A / B) 패턴 찾기
                 matches = re.findall(r'\(([^)]+?)\s*/\s*([^)]+?)\)', question['question'])
                 
                 if matches:
-                    st.markdown("##### 빈칸에 들어갈 말을 선택하세요.")
+                    # 선택형 빈칸 (라디오 버튼)
                     user_selections = []
-                    
                     for i, match in enumerate(matches):
                         options = [m.strip() for m in match]
-                        choice = st.radio(f"빈칸 {i+1}", options, horizontal=True, key=f"q_{idx}_{i}")
+                        # 섞어서 보여주기 (옵션) - 원하면 random.shuffle(options)
+                        choice = st.radio(f"**[빈칸 {i+1}]** 정답은?", options, horizontal=True, key=f"q_{idx}_{i}")
                         user_selections.append(choice)
                     
-                    if st.button("정답 확인 🎯", type="primary", use_container_width=True):
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("정답 제출하기 📝", type="primary", use_container_width=True):
                         st.session_state['user_input'] = user_selections
                         st.session_state['show_answer'] = True
                         st.rerun()
-                
                 else:
-                    st.markdown("##### 정답을 떠올려보세요.")
+                    # 순수 주관식 (생각해보기)
+                    with st.expander("힌트 보기 💡"):
+                        st.write("문맥을 잘 읽어보세요!")
+                    
                     if st.button("정답 확인하기 👀", type="primary", use_container_width=True):
                         st.session_state['user_input'] = "VIEW_ONLY"
                         st.session_state['show_answer'] = True
                         st.rerun()
 
-        # --- 결과 확인 화면 ---
+        # ----------------------------------------
+        # 3. 정답 및 해설 표시 (결과 화면)
+        # ----------------------------------------
         else:
             is_correct = False
             
-            # 1. OX 채점
+            # --- 채점 로직 ---
             if question.get('type') == 'OX':
                 real_ans = 'O' if 'O' in question['answer'].upper() else 'X'
                 if st.session_state['user_input'] == real_ans:
                     is_correct = True
-                    st.success("✅ 정답입니다!")
-                else:
-                    is_correct = False
-                    st.error(f"❌ 오답입니다! 정답: {real_ans}")
-
-            # 2. 선택형 빈칸 채점
-            elif isinstance(st.session_state.get('user_input'), list):
+            
+            elif isinstance(st.session_state.get('user_input'), list): # 선택형 빈칸
                 real_answers = [ans.strip() for ans in question['answer'].split(',')]
-                user_answers = st.session_state['user_input']
-                
-                if len(real_answers) == len(user_answers):
-                    if real_answers == user_answers:
+                if len(real_answers) == len(st.session_state['user_input']):
+                    if real_answers == st.session_state['user_input']:
                         is_correct = True
-                        st.success("✅ 정답입니다!")
-                    else:
-                        is_correct = False
-                        st.error(f"❌ 틀렸습니다. 정답: {question['answer']}")
-                else:
-                    st.warning("⚠️ 자동 채점 불가")
-                    st.info(f"정답: {question['answer']}")
-                    is_correct = False
-
-            # 3. 일반 주관식 (자가 채점)
-            else:
+            
+            elif st.session_state.get('user_input') == "VIEW_ONLY":
+                # 주관식은 사용자에게 물어봄
                 st.info(f"💡 정답: **{question['answer']}**")
-                st.markdown("본인의 답과 일치하나요?")
+                st.write("본인의 생각과 일치하나요?")
                 c1, c2 = st.columns(2)
                 if c1.button("🙆‍♂️ 맞음"):
                     st.session_state['user_result'] = 'correct'
@@ -241,37 +279,60 @@ else:
                     st.session_state['user_result'] = 'wrong'
                     st.rerun()
                 
-                if st.session_state.get('user_result') == 'correct':
-                    is_correct = True
-                elif st.session_state.get('user_result') == 'wrong':
-                    is_correct = False
-            
-            # 해설 및 점수 처리
-            if question.get('type') != '빈칸' or isinstance(st.session_state.get('user_input'), list) or st.session_state.get('user_result'):
-                
-                st.markdown(f"**[해설]** {question['explanation']}")
-                
-                if 'processed' not in st.session_state:
-                    if is_correct:
-                        st.session_state['score'] += 1
-                    else:
-                        save_wrong_note(question)
-                    st.session_state['processed'] = True
-                
-                st.markdown("---")
-                if st.button("다음 문제 👉", type="primary", use_container_width=True):
-                    st.session_state['current_idx'] += 1
-                    st.session_state['show_answer'] = False
-                    st.session_state['user_input'] = None
-                    st.session_state['user_result'] = None
-                    if 'processed' in st.session_state:
-                        del st.session_state['processed']
-                    st.rerun()
+                if st.session_state.get('user_result') == 'correct': is_correct = True
+                elif st.session_state.get('user_result') == 'wrong': is_correct = False
+                else: st.stop() # 버튼 누르기 전 대기
 
+            # --- 결과 UI ---
+            if is_correct:
+                st.success("✅ 정답입니다! 훌륭해요!")
+            else:
+                st.error(f"❌ 아쉽네요. 정답은 [ {question['answer']} ] 입니다.")
+
+            # --- 해설 박스 ---
+            with st.container():
+                st.markdown(f"""
+                <div style="background-color: #fff3cd; padding: 15px; border-radius: 10px; border: 1px solid #ffeeba;">
+                    <strong>🧐 상세 해설</strong><br><br>
+                    {question['explanation']}
+                </div>
+                """, unsafe_allow_html=True)
+
+            # --- 점수 반영 및 다음 버튼 ---
+            if 'processed' not in st.session_state:
+                if is_correct:
+                    st.session_state['score'] += 1
+                else:
+                    save_wrong_note(question)
+                st.session_state['processed'] = True
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("다음 문제로 넘어가기 👉", type="primary", use_container_width=True):
+                st.session_state['current_idx'] += 1
+                st.session_state['show_answer'] = False
+                st.session_state['user_input'] = None
+                st.session_state['user_result'] = None
+                if 'processed' in st.session_state:
+                    del st.session_state['processed']
+                st.rerun()
+
+    # 퀴즈 종료
     else:
         st.balloons()
-        st.success("🎉 학습 종료!")
-        st.markdown(f"### 최종 점수: {st.session_state['score']} / {len(q_list)}")
-        if st.button("처음으로"):
-            st.session_state['quiz_started'] = False
-            st.rerun()
+        st.markdown("""
+            <div style="text-align: center; padding: 50px;">
+                <h1>🎉 수고하셨습니다!</h1>
+                <h3>최종 점수</h3>
+                <h1 style="color: #4CAF50; font-size: 60px;">
+                    {score} / {total}
+                </h1>
+            </div>
+        """.format(score=st.session_state['score'], total=len(q_list)), unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 다시 풀기", use_container_width=True):
+                st.session_state['quiz_started'] = False
+                st.rerun()
+        with col2:
+            st.button("❌ 오답 노트 확인 (준비중)", disabled=True, use_container_width=True)
