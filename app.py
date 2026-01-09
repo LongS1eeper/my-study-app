@@ -2,7 +2,7 @@ import streamlit as st
 import json
 import os
 import random
-import re  # 정규표현식 모듈 추가 (괄호 패턴 찾기용)
+import re
 
 # ==========================================
 # 1. 설정 및 데이터 로드
@@ -61,12 +61,19 @@ if 'show_answer' not in st.session_state:
     st.session_state['show_answer'] = False
 if 'user_result' not in st.session_state:
     st.session_state['user_result'] = None
+if 'user_input' not in st.session_state:
+    st.session_state['user_input'] = None
 
 # ==========================================
 # 3. 사이드바
 # ==========================================
 st.sidebar.title("MENU 💼")
-mode = st.sidebar.radio("학습 모드 선택", ["전체 문제 풀기", "주제별 풀기", "오답 노트 복습"])
+
+# [수정됨] 메뉴에 '랜덤 30문항 모의고사' 추가
+mode = st.sidebar.radio(
+    "학습 모드 선택", 
+    ["전체 문제 풀기", "주제별 풀기", "랜덤 30문항 모의고사", "오답 노트 복습"]
+)
 
 all_data = load_data()
 categories = sorted(list(set([q.get('category', '기타') for q in all_data]))) if all_data else []
@@ -85,27 +92,46 @@ if st.sidebar.button("초기화 (처음부터 다시)"):
 st.title("💰 투자자산운용사 핵심 퀴즈")
 
 if not st.session_state['quiz_started']:
-    st.info(f"총 {len(all_data)}개의 문제가 준비되어 있습니다.")
+    st.info(f"데이터베이스에 총 {len(all_data)}개의 문제가 있습니다.")
     
     final_questions = []
+    
+    # 모드별 데이터 준비 로직
     if mode == "전체 문제 풀기":
         final_questions = all_data.copy()
+        
     elif mode == "주제별 풀기" and selected_category:
         final_questions = [q for q in all_data if q.get('category') == selected_category]
+        
+    # [추가된 로직] 랜덤 30문항 추출
+    elif mode == "랜덤 30문항 모의고사":
+        if len(all_data) > 30:
+            final_questions = random.sample(all_data, 30)
+        else:
+            final_questions = all_data.copy() # 30개보다 적으면 전부 다
+            
     elif mode == "오답 노트 복습":
         final_questions = load_wrong_notes()
         if not final_questions:
             st.warning("저장된 오답 노트가 없습니다.")
     
+    # 시작 버튼
     if final_questions:
-        if st.button("학습 시작하기! 🚀"):
-            random.shuffle(final_questions)
+        # 문구 다르게 표시
+        btn_text = "모의고사 시작! (30문항) ⏱️" if mode == "랜덤 30문항 모의고사" else "학습 시작하기! 🚀"
+        
+        if st.button(btn_text):
+            # 랜덤 모드는 이미 섞여 있지만, 한번 더 섞어줌 (다른 모드들을 위해)
+            if mode != "랜덤 30문항 모의고사": 
+                random.shuffle(final_questions)
+            
             st.session_state['quiz_data'] = final_questions
             st.session_state['current_idx'] = 0
             st.session_state['score'] = 0
             st.session_state['quiz_started'] = True
             st.session_state['show_answer'] = False
             st.session_state['user_result'] = None
+            st.session_state['user_input'] = None
             st.rerun()
     else:
         if mode != "오답 노트 복습":
@@ -124,6 +150,9 @@ else:
         
         # --- 문제 표시 ---
         with st.container():
+            category_text = question.get('category', '공통 주제')
+            st.caption(f"🏷️ 주제: **{category_text}**") 
+            
             st.markdown(f"### Q{idx+1}. [{question.get('type', '일반')}]")
             st.markdown(f"#### {question['question']}")
             st.divider()
@@ -146,26 +175,22 @@ else:
 
             # 2. 빈칸 문제 (선택형 vs 일반형 자동 감지)
             else:
-                # 정규표현식으로 (A / B) 형태 찾기
                 matches = re.findall(r'\(([^)]+?)\s*/\s*([^)]+?)\)', question['question'])
                 
-                # 선택형 빈칸이 있는 경우 (예: 기하평균 / 산술평균)
                 if matches:
                     st.markdown("##### 빈칸에 들어갈 말을 선택하세요.")
                     user_selections = []
                     
-                    # 각 빈칸마다 라디오 버튼 생성
                     for i, match in enumerate(matches):
-                        options = [m.strip() for m in match] # ['기하평균', '산술평균']
+                        options = [m.strip() for m in match]
                         choice = st.radio(f"빈칸 {i+1}", options, horizontal=True, key=f"q_{idx}_{i}")
                         user_selections.append(choice)
                     
                     if st.button("정답 확인 🎯", type="primary", use_container_width=True):
-                        st.session_state['user_input'] = user_selections # 리스트로 저장
+                        st.session_state['user_input'] = user_selections
                         st.session_state['show_answer'] = True
                         st.rerun()
                 
-                # 일반 빈칸/주관식 문제 (자가 진단)
                 else:
                     st.markdown("##### 정답을 떠올려보세요.")
                     if st.button("정답 확인하기 👀", type="primary", use_container_width=True):
@@ -189,14 +214,10 @@ else:
 
             # 2. 선택형 빈칸 채점
             elif isinstance(st.session_state.get('user_input'), list):
-                # DB 정답 가져오기 (콤마로 구분된 문자열 -> 리스트 변환)
-                # 예: "기하평균, 산술평균" -> ['기하평균', '산술평균']
                 real_answers = [ans.strip() for ans in question['answer'].split(',')]
                 user_answers = st.session_state['user_input']
                 
-                # 개수 맞는지 확인 후 비교
                 if len(real_answers) == len(user_answers):
-                    # 모든 답이 일치해야 정답
                     if real_answers == user_answers:
                         is_correct = True
                         st.success("✅ 정답입니다!")
@@ -204,10 +225,8 @@ else:
                         is_correct = False
                         st.error(f"❌ 틀렸습니다. 정답: {question['answer']}")
                 else:
-                    # DB 정답 개수와 추출된 문제 개수가 다를 경우 (예외 처리)
-                    st.warning("⚠️ 문제 형식이 복잡하여 자동 채점이 어렵습니다. 아래 해설을 확인하세요.")
+                    st.warning("⚠️ 자동 채점 불가")
                     st.info(f"정답: {question['answer']}")
-                    # 이 경우 틀린 것으로 간주하거나 사용자에게 맡김 (여기선 오답 처리)
                     is_correct = False
 
             # 3. 일반 주관식 (자가 채점)
@@ -227,13 +246,11 @@ else:
                 elif st.session_state.get('user_result') == 'wrong':
                     is_correct = False
             
-            # 해설 및 점수 처리 (공통)
-            # 일반 주관식은 user_result가 결정된 후, 나머지는 바로 표시
+            # 해설 및 점수 처리
             if question.get('type') != '빈칸' or isinstance(st.session_state.get('user_input'), list) or st.session_state.get('user_result'):
                 
                 st.markdown(f"**[해설]** {question['explanation']}")
                 
-                # 점수 반영 (중복 방지)
                 if 'processed' not in st.session_state:
                     if is_correct:
                         st.session_state['score'] += 1
