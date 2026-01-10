@@ -1,3 +1,3 @@
 # my-study-app
-투운사 OX 퀴즈
-https://toounsa-by-jinghao.streamlit.app/
+https://toounsa-by-jinghao.streamlit.app/ - OX
+https://jinghao-toounsa.streamlit.app/ - 4지선다
