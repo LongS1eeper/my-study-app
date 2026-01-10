@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import os
 import random
+import re
 
 # ==========================================
 # 1. 페이지 설정 (반드시 코드 최상단에 위치)
@@ -74,7 +75,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터 로드
+# 2. 데이터 로드 (자동 수리 기능 탑재)
 # ==========================================
 DB_FILE = "database2.json"
 WRONG_NOTE_FILE = "wrong_notes_v2.json"
@@ -84,12 +85,48 @@ def load_data():
     if not os.path.exists(DB_FILE):
         st.error(f"❌ {DB_FILE} 파일을 찾을 수 없습니다.")
         return []
+    
+    # 파일을 텍스트로 먼저 읽어옵니다.
     with open(DB_FILE, "r", encoding="utf-8") as f:
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            st.error("JSON 파일 형식이 올바르지 않습니다.")
-            return []
+        content = f.read()
+
+    # -----------------------------------------------------------
+    # [핵심] JSON 로드 전, 텍스트 상태에서 오류를 자동 수정합니다.
+    # -----------------------------------------------------------
+    try:
+        # 1. 끊긴 대괄호 연결 (] [ -> ,) : 파일 합치면서 발생할 수 있는 오류 수정
+        content = re.sub(r"\]\s*\[", ", ", content)
+
+        # 2. 수학 기호 역슬래시 자동 수정 (\times -> \\times 등)
+        # 자주 쓰이는 LaTeX 명령어들을 리스트업하여 역슬래시를 두 개로 치환
+        latex_keywords = [
+            "times", "sigma", "sqrt", "frac", "mu", "le", "ge", "ne", 
+            "approx", "sum", "prod", "int", "alpha", "beta", "gamma", 
+            "delta", "theta", "lambda", "pi", "rho", "phi", "omega"
+        ]
+        for word in latex_keywords:
+            # (?<!\\)는 앞에 \가 없는 경우만 찾는다는 뜻 (이미 \\times면 무시)
+            pattern = r'(?<!\\)\\' + word 
+            replacement = r'\\\\' + word   
+            content = re.sub(pattern, replacement, content)
+
+        # 3. f' (미분 기호) 처리: \f는 폼피드(form feed)로 인식될 수 있음
+        content = re.sub(r'(?<!\\)\\f', r'\\\\f', content)
+
+        # 4. 맨 앞뒤 대괄호 확인 (혹시 빠졌을 경우 대비)
+        content = content.strip()
+        if not content.startswith("["): content = "[" + content
+        if not content.endswith("]"): content = content + "]"
+
+        # 5. 수정된 텍스트로 JSON 변환 시도
+        return json.loads(content)
+
+    except json.JSONDecodeError as e:
+        # 여전히 에러가 나면 어디가 문제인지 화면에 정확히 찍어줌
+        st.error(f"⚠️ 데이터 파일 형식 오류 발생!")
+        st.error(f"오류 위치: {e.lineno}번째 줄, {e.colno}번째 글자")
+        st.code(e.msg)
+        return []
 
 def load_wrong_notes():
     if os.path.exists(WRONG_NOTE_FILE):
@@ -140,29 +177,33 @@ st.title("💰 투운사 마스터 V2")
 # --- 퀴즈 대기 화면 ---
 if not st.session_state['quiz_started']:
     st.markdown("---")
-    st.info(f"총 **{len(all_data)}**개의 문제가 준비되어 있습니다.")
     
-    final_questions = []
-    if mode == "전체 문제 풀기":
-        final_questions = all_data.copy()
-    elif mode == "랜덤 20문항":
-        final_questions = random.sample(all_data, min(20, len(all_data)))
-    elif mode == "오답 노트":
-        final_questions = wrong_data
-        if not final_questions:
-            st.warning("저장된 오답이 없습니다.")
+    if not all_data:
+        st.warning("데이터를 불러오지 못했습니다. 위의 에러 메시지를 확인해주세요.")
+    else:
+        st.info(f"총 **{len(all_data)}**개의 문제가 준비되어 있습니다.")
+        
+        final_questions = []
+        if mode == "전체 문제 풀기":
+            final_questions = all_data.copy()
+        elif mode == "랜덤 20문항":
+            final_questions = random.sample(all_data, min(20, len(all_data)))
+        elif mode == "오답 노트":
+            final_questions = wrong_data
+            if not final_questions:
+                st.warning("저장된 오답이 없습니다.")
 
-    if final_questions:
-        if st.button("🚀 문제 풀기 시작", type="primary"):
-            if mode != "전체 문제 풀기":
-                random.shuffle(final_questions)
-            st.session_state['quiz_data'] = final_questions
-            st.session_state['current_idx'] = 0
-            st.session_state['score'] = 0
-            st.session_state['quiz_started'] = True
-            st.session_state['show_answer'] = False
-            st.session_state['user_selection'] = None
-            st.rerun()
+        if final_questions:
+            if st.button("🚀 문제 풀기 시작", type="primary"):
+                if mode != "전체 문제 풀기":
+                    random.shuffle(final_questions)
+                st.session_state['quiz_data'] = final_questions
+                st.session_state['current_idx'] = 0
+                st.session_state['score'] = 0
+                st.session_state['quiz_started'] = True
+                st.session_state['show_answer'] = False
+                st.session_state['user_selection'] = None
+                st.rerun()
 
 # --- 퀴즈 진행 화면 ---
 else:
@@ -213,6 +254,7 @@ else:
                 user_idx = -1
             
             correct_idx = question['answer']
+            # options 리스트에서 정답 텍스트 가져오기 (answer는 1부터 시작하므로 -1)
             correct_text = options[correct_idx - 1]
 
             if user_idx == correct_idx:
