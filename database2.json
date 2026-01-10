@@ -1114,7 +1114,7 @@
       "무위험이자율, 옵션가격"
     ],
     "answer": 4,
-    "explanation": "델타노말방식 VaR = $S \times \sigma \times z \times f'$ (S:기초자산가격, $\sigma$:수익률표준편차, z:신뢰상수, $f'$:델타). 따라서 '옵션가격, 행사가격, 무위험이자율'은 계산에 사용되지 않는다."
+    "explanation": "델타노말방식 VaR = $S \\times \\sigma \\times z \\times f'$ (S:기초자산가격, $\\sigma$:수익률표준편차, z:신뢰상수, $f'$:델타). 따라서 '옵션가격, 행사가격, 무위험이자율'은 계산에 사용되지 않는다."
   },
   {
     "id": 87,
@@ -1140,7 +1140,7 @@
       "18.64"
     ],
     "answer": 3,
-    "explanation": "$3.3억 원 \times \frac{2.33}{1.65} \times \sqrt{4} = 9.32$억 원\n(95% 신뢰상수 1.65, 99% 신뢰상수 2.33 적용)"
+    "explanation": "$3.3억 원 \\times \\frac{2.33}{1.65} \\times \\sqrt{4} = 9.32$억 원\n(95% 신뢰상수 1.65, 99% 신뢰상수 2.33 적용)"
   },
   {
     "id": 89,
@@ -1153,7 +1153,7 @@
       "40억 원"
     ],
     "answer": 2,
-    "explanation": "$10억 원 \times \sqrt{4} = 20$억 원"
+    "explanation": "$10억 원 \\times \\sqrt{4} = 20$억 원"
   },
   {
     "id": 90,
