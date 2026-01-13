@@ -193,7 +193,6 @@ st.sidebar.image("https://cdn-icons-png.flaticon.com/512/4762/4762311.png", widt
 st.sidebar.title("🔥 투운사 합격 모드")
 st.sidebar.markdown("---")
 
-# 학습 모드 목록 정의
 basic_modes = ["전체 문제 정주행", "랜덤 20문항 모의고사", "오답 노트 집중공략"]
 exam_modes = [
     "실전 모의고사 1회 (183~282번)",
@@ -242,7 +241,7 @@ if not st.session_state['quiz_started']:
         # 1. 기본 모드 처리
         if mode == "전체 문제 정주행":
             final_questions = all_data.copy()
-            final_questions.sort(key=lambda x: x['id']) # ID 순 정렬
+            final_questions.sort(key=lambda x: x['id'])
         elif mode == "랜덤 20문항 모의고사":
             final_questions = random.sample(all_data, min(20, len(all_data)))
         elif mode == "오답 노트 집중공략":
@@ -252,29 +251,21 @@ if not st.session_state['quiz_started']:
         
         # 2. 실전 모의고사 회차별 처리
         elif "실전 모의고사" in mode:
-            # 회차별 범위 정의
             exam_ranges = {
-                "1회": (183, 282),
-                "2회": (283, 382),
-                "3회": (383, 482),
-                "4회": (483, 582),
-                "5회": (583, 682)
+                "1회": (183, 282), "2회": (283, 382), "3회": (383, 482),
+                "4회": (483, 582), "5회": (583, 682)
             }
-            
-            # 현재 선택된 모드에서 회차 추출 (예: "실전 모의고사 1회..." -> "1회")
             for key, (start_id, end_id) in exam_ranges.items():
                 if f"모의고사 {key}" in mode:
                     final_questions = [q for q in all_data if start_id <= q['id'] <= end_id]
-                    final_questions.sort(key=lambda x: x['id']) # 번호순 정렬
+                    final_questions.sort(key=lambda x: x['id'])
                     break
             
             if not final_questions:
-                st.warning(f"⚠️ 해당 회차의 문제 데이터(ID {start_id}~{end_id})를 찾을 수 없습니다.")
+                st.warning("⚠️ 해당 회차의 문제 데이터를 찾을 수 없습니다.")
 
-        # 문제 풀기 버튼
         if final_questions:
             if st.button("🏁 문제 풀기 시작하기", type="primary"):
-                # 랜덤 모드가 아니면 번호순 정렬 유지, 랜덤 모드만 섞기
                 if mode == "랜덤 20문항 모의고사" or mode == "오답 노트 집중공략":
                     random.shuffle(final_questions)
                 
@@ -307,7 +298,7 @@ else:
             st.session_state['quiz_started'] = False
             st.rerun()
     else:
-        # 상단 진행바 및 정보
+        # 상단 진행바
         progress = (idx + 1) / len(q_list)
         st.progress(progress)
         
@@ -327,13 +318,14 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        # [보기 박스 (있을 경우만)]
         if question.get('context'):
             st.markdown(f'<div class="context-box">📢 <strong>보기</strong><br>{question["context"]}</div>', unsafe_allow_html=True)
 
         options = question['options']
 
-        # [정답 선택 영역]
+        # ----------------------------------------------------
+        # [상태 1] 정답 선택 전 (라디오 버튼 표시)
+        # ----------------------------------------------------
         if not st.session_state['show_answer']:
             st.markdown("👇 **정답을 선택하세요**")
             choice = st.radio("정답 선택", options, index=None, key=f"q_{idx}", label_visibility="collapsed")
@@ -345,7 +337,9 @@ else:
                 st.session_state['show_answer'] = True
                 st.rerun()
         
-        # [결과 및 해설 영역]
+        # ----------------------------------------------------
+        # [상태 2] 채점 완료 후 (결과 및 색상 표시)
+        # ----------------------------------------------------
         else:
             user_choice = st.session_state['user_selection']
             try:
@@ -354,9 +348,8 @@ else:
                 user_idx = -1
             
             correct_idx = question['answer']
-            correct_text = options[correct_idx - 1]
-
-            # 정오답 판별 UI
+            
+            # 1. 상단 정오답 배너 표시
             if user_idx == correct_idx:
                 st.markdown("""
                     <div style="background-color: #e8f5e9; padding: 15px; border-radius: 10px; border: 2px solid #4CAF50; text-align: center; margin-bottom: 20px;">
@@ -377,9 +370,27 @@ else:
                     save_wrong_note(question)
                     st.session_state['processed'] = True
             
-            # 정답 및 해설 표시
-            st.markdown(f"#### 👉 정답: <span style='color: #1565C0;'>{correct_idx}번</span> ({correct_text})", unsafe_allow_html=True)
-            
+            # 2. 선지 전체 보여주기 (맞은 답은 초록, 틀린 답은 빨강 배경)
+            for i, option_text in enumerate(options):
+                opt_num = i + 1
+                
+                # 기본 스타일 (선택 안 한 나머지)
+                div_style = "padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #e0e0e0; background-color: #f9f9f9; color: #555;"
+                prefix = f"{opt_num}. "
+                
+                # 색상 로직 적용
+                if opt_num == correct_idx:
+                    # 정답인 선지 (항상 초록색)
+                    div_style = "padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 2px solid #4CAF50; background-color: #e8f5e9; color: #2e7d32; font-weight: bold;"
+                    prefix = "✅ "
+                elif opt_num == user_idx and user_idx != correct_idx:
+                    # 내가 고른 오답 선지 (빨간색)
+                    div_style = "padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 2px solid #ef5350; background-color: #ffebee; color: #c62828; font-weight: bold;"
+                    prefix = "❌ "
+                
+                st.markdown(f'<div style="{div_style}">{prefix}{option_text}</div>', unsafe_allow_html=True)
+
+            # 3. 해설 박스
             st.markdown(f"""
             <div class="explanation-box">
                 <strong style="font-size: 18px;">💡 상세 해설</strong><br><br>
@@ -389,7 +400,7 @@ else:
             
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # 다음 문제 버튼
+            # 4. 다음 문제 버튼
             if st.button("다음 문제로 넘어가기 ➡️", type="primary"):
                 st.session_state['current_idx'] += 1
                 st.session_state['show_answer'] = False
