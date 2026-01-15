@@ -75,7 +75,7 @@ st.markdown("""
         box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
     }
 
-    /* [라디오 버튼 커스텀 - 카드 형태] */
+    /* [라디오 버튼 커스텀 - 카드 형태 (선택 전)] */
     .stRadio > div {
         background-color: transparent;
     }
@@ -193,7 +193,7 @@ st.sidebar.image("https://cdn-icons-png.flaticon.com/512/4762/4762311.png", widt
 st.sidebar.title("🔥 투운사 합격 모드")
 st.sidebar.markdown("---")
 
-basic_modes = ["전체 문제 정주행", "랜덤 20문항 모의고사", "오답 노트 집중공략"]
+basic_modes = ["전체 문제 정주행", "랜덤 20문항 모의고사", "오답 노트 집중공략", "🎯 커스텀 범위 설정 (ID 직접 입력)"]
 exam_modes = [
     "실전 모의고사 1회 (183~282번)",
     "실전 모의고사 2회 (283~382번)",
@@ -227,9 +227,14 @@ if not st.session_state['quiz_started']:
     if not all_data:
         st.error("⚠️ 데이터 파일(database2.json)을 불러오지 못했습니다.")
     else:
+        # 데이터 ID 범위 확인
+        all_ids = [q['id'] for q in all_data]
+        min_db_id = min(all_ids) if all_ids else 0
+        max_db_id = max(all_ids) if all_ids else 0
+
         st.markdown(f"""
         <div style="background-color: #e8f5e9; padding: 20px; border-radius: 10px; border: 1px solid #c8e6c9;">
-            📊 현재 데이터베이스 총 <strong>{len(all_data)}</strong>문제<br>
+            📊 현재 데이터베이스: 총 <strong>{len(all_data)}</strong>문제 (ID: {min_db_id} ~ {max_db_id})<br>
             👉 선택된 모드: <strong>{mode}</strong>
         </div>
         """, unsafe_allow_html=True)
@@ -238,8 +243,25 @@ if not st.session_state['quiz_started']:
 
         final_questions = []
         
-        # 1. 기본 모드 처리
-        if mode == "전체 문제 정주행":
+        # 1. 커스텀 범위 설정 모드
+        if mode == "🎯 커스텀 범위 설정 (ID 직접 입력)":
+            st.warning("🧐 풀고 싶은 문제의 ID 범위를 입력하세요.")
+            col1, col2 = st.columns(2)
+            with col1:
+                start_id = st.number_input("시작 번호", min_value=min_db_id, max_value=max_db_id, value=min_db_id)
+            with col2:
+                end_id = st.number_input("종료 번호", min_value=min_db_id, max_value=max_db_id, value=max_db_id)
+            
+            if start_id > end_id:
+                st.error("❌ 시작 번호가 종료 번호보다 클 수 없습니다.")
+            else:
+                final_questions = [q for q in all_data if start_id <= q['id'] <= end_id]
+                final_questions.sort(key=lambda x: x['id'])
+                if not final_questions:
+                    st.error(f"⚠️ 해당 범위({start_id}~{end_id})에 해당하는 문제가 없습니다.")
+
+        # 2. 기본 모드 처리
+        elif mode == "전체 문제 정주행":
             final_questions = all_data.copy()
             final_questions.sort(key=lambda x: x['id'])
         elif mode == "랜덤 20문항 모의고사":
@@ -249,7 +271,7 @@ if not st.session_state['quiz_started']:
             if not final_questions:
                 st.warning("🎉 저장된 오답이 없습니다! 완벽하시네요.")
         
-        # 2. 실전 모의고사 회차별 처리
+        # 3. 실전 모의고사 회차별 처리
         elif "실전 모의고사" in mode:
             exam_ranges = {
                 "1회": (183, 282), "2회": (283, 382), "3회": (383, 482),
@@ -264,8 +286,11 @@ if not st.session_state['quiz_started']:
             if not final_questions:
                 st.warning("⚠️ 해당 회차의 문제 데이터를 찾을 수 없습니다.")
 
+        # 문제 풀기 버튼 (문제가 있을 때만 표시)
         if final_questions:
-            if st.button("🏁 문제 풀기 시작하기", type="primary"):
+            btn_text = f"🏁 문제 풀기 시작하기 (총 {len(final_questions)}문제)"
+            if st.button(btn_text, type="primary"):
+                # 랜덤 모드나 오답 노트만 섞기, 나머지는 번호순 정렬
                 if mode == "랜덤 20문항 모의고사" or mode == "오답 노트 집중공략":
                     random.shuffle(final_questions)
                 
